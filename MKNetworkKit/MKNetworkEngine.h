@@ -260,6 +260,8 @@
  */
 -(void) enqueueOperation:(MKNetworkOperation*) operation forceReload:(BOOL) forceReload;
 
+- (void) enqueueBatchOfRequestOperations: (NSArray *) operations completionBlock: (void(^)(NSArray *operations)) completionBlock;
+
 /*!
  *  @abstract HostName of the engine
  *  @property readonlyHostName

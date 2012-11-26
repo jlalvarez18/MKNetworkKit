@@ -451,6 +451,44 @@ static NSOperationQueue *_sharedNetworkQueue;
   });
 }
 
+- (void) enqueueBatchOfRequestOperations: (NSArray *) operations completionBlock: (void(^)(NSArray *operations)) completionBlock;
+{
+	__block dispatch_group_t dispatchGroup = dispatch_group_create();
+	
+	NSBlockOperation *batchedOperation;
+	
+	batchedOperation = [NSBlockOperation blockOperationWithBlock:^{
+		dispatch_group_notify(dispatchGroup, dispatch_get_main_queue(), ^{
+			if (completionBlock)
+				completionBlock(operations);
+		});
+	}];
+	
+	[operations enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+		MKNetworkOperation *operation = obj;
+		
+		void(^LeaveGroupBlock)(void) = ^(void) {
+			dispatch_group_async(dispatchGroup, dispatch_get_main_queue(), ^{
+				dispatch_group_leave(dispatchGroup);
+			});
+		};
+		
+		[operation addCompletionHandler:^(MKNetworkOperation *completedOperation) {
+			LeaveGroupBlock();
+		} errorHandler: ^(MKNetworkOperation *completedOperation, NSError *error) {
+			LeaveGroupBlock();
+		}];
+		
+		dispatch_group_enter(dispatchGroup);
+		
+		[batchedOperation addDependency: operation];
+		
+		[self enqueueOperation: operation];
+	}];
+	
+	[_sharedNetworkQueue addOperation: batchedOperation];
+}
+
 #if TARGET_OS_IPHONE
 
 - (MKNetworkOperation*)imageAtURL:(NSURL *)url completionHandler:(MKNKImageBlock) imageFetchedBlock errorHandler:(MKNKResponseErrorBlock) errorBlock {
